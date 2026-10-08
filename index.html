@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ChapterLens — Readability Checker</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:#f6f7fb;color:#171923}
+.wrap{max-width:1050px;margin:auto;padding:28px 18px 50px}.brand{font-size:27px;font-weight:800;letter-spacing:-.5px}.tag{color:#687084;margin-top:4px}
+.card{background:white;border:1px solid #e5e7ef;border-radius:18px;padding:22px;margin-top:20px;box-shadow:0 5px 20px rgba(20,25,40,.05)}
+textarea{width:100%;min-height:270px;border:1px solid #d9dce6;border-radius:12px;padding:16px;font:15px/1.65 inherit;resize:vertical;outline:none}
+textarea:focus{border-color:#6d5dfc;box-shadow:0 0 0 3px rgba(109,93,252,.12)}
+button{border:0;border-radius:11px;background:#171923;color:#fff;padding:12px 18px;font-weight:700;cursor:pointer;margin-top:12px}button:hover{opacity:.9}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.metric{background:#f7f7fa;border-radius:13px;padding:16px}.metric b{font-size:25px;display:block}.muted{color:#6b7280;font-size:13px}
+.highlight{padding:14px 15px;border-left:4px solid #171923;background:#fafafa;border-radius:10px;margin:10px 0;line-height:1.6}
+.scorebar{height:9px;background:#e8e9ef;border-radius:10px;overflow:hidden;margin-top:10px}.scorebar i{display:block;height:100%;background:#171923;border-radius:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center}.hidden{display:none}
+small{color:#777}.pill{display:inline-block;background:#eeeef4;border-radius:99px;padding:4px 9px;font-size:12px}
+@media(max-width:700px){.grid{grid-template-columns:1fr}.wrap{padding:20px 13px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">ChapterLens</div>
+  <div class="tag">Find the parts of your chapter that make readers work harder.</div>
+
+  <div class="card">
+    <div class="row"><h2 style="margin:0">Paste a chapter</h2><span class="pill">Free</span></div>
+    <p class="muted">Your text is analysed in this browser. Nothing is uploaded.</p>
+    <textarea id="text" placeholder="Paste your chapter here..."></textarea>
+    <button onclick="analyze()">Analyse chapter</button>
+  </div>
+
+  <div id="results" class="hidden">
+    <div class="card">
+      <h2>Readability</h2>
+      <div class="grid">
+        <div class="metric"><span class="muted">Flesch Reading Ease</span><b id="score">—</b><span id="level" class="muted"></span></div>
+        <div class="metric"><span class="muted">Words</span><b id="words">—</b></div>
+        <div class="metric"><span class="muted">Sentences</span><b id="sentences">—</b></div>
+      </div>
+      <div class="scorebar"><i id="bar"></i></div>
+    </div>
+
+    <div class="card">
+      <h2>Five hardest sentences</h2>
+      <p class="muted">Ranked using sentence length and estimated syllable density.</p>
+      <div id="hardest"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function words(s){return (s.match(/\b[\w’'-]+\b/g)||[])}
+function syllables(w){
+  w=w.toLowerCase().replace(/[^a-z]/g,'');
+  if(!w)return 0;
+  if(w.length<=3)return 1;
+  w=w.replace(/(?:e|es|ed)$/,'');
+  let m=w.match(/[aeiouy]+/g);
+  let n=m?m.length:1;
+  if(w.endsWith('le') && w.length>2 && !/[aeiouy]le$/.test(w.slice(0,-1))) n++;
+  return Math.max(1,n);
+}
+function splitSentences(t){
+  return t.replace(/\s+/g,' ').trim().match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[];
+}
+function analyze(){
+  const t=document.getElementById('text').value.trim();
+  if(!t){alert('Paste a chapter first.');return}
+  const ws=words(t), ss=splitSentences(t);
+  const syll=ws.reduce((a,w)=>a+syllables(w),0);
+  const nW=ws.length, nS=ss.length;
+  const score=Math.max(0,Math.min(100,206.835-1.015*(nW/Math.max(1,nS))-84.6*(syll/Math.max(1,nW))));
+  document.getElementById('score').textContent=score.toFixed(1);
+  document.getElementById('words').textContent=nW;
+  document.getElementById('sentences').textContent=nS;
+  document.getElementById('bar').style.width=score+'%';
+  let level=score>=90?'Very easy':score>=80?'Easy':score>=70?'Fairly easy':score>=60?'Standard':score>=50?'Fairly difficult':score>=30?'Difficult':'Very difficult';
+  document.getElementById('level').textContent=level;
+
+  const ranked=ss.map((s,i)=>{
+    const sw=words(s), sy=sw.reduce((a,w)=>a+syllables(w),0);
+    const density=sy/Math.max(1,sw.length);
+    const complexity=(sw.length*0.65)+(density*100*0.35);
+    return {s,i,sw,sy,complexity};
+  }).sort((a,b)=>b.complexity-a.complexity).slice(0,5);
+
+  document.getElementById('hardest').innerHTML=ranked.map((x,i)=>{
+    return `<div class="highlight"><b>#${i+1}</b> ${escapeHtml(x.s)}<br><span class="muted">${x.sw.length} words · estimated ${x.sy} syllables · density ${(x.sy/x.sw.length).toFixed(2)}</span></div>`;
+  }).join('');
+  document.getElementById('results').classList.remove('hidden');
+  window.scrollTo({top:document.getElementById('results').offsetTop-10,behavior:'smooth'});
+}
+function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+</script>
+</body>
+</html>
